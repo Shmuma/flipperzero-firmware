@@ -32,6 +32,7 @@
 #include "bett.h"
 #include "doitrand.h"
 #include "phoenix_v2.h"
+#include "oregon.h"
 
 /**
  * Registration by name SubGhzProtocol.
