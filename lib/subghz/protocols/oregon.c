@@ -11,7 +11,7 @@
 static const SubGhzBlockConst oregon_const = {
     .te_long = 1000,
     .te_short = 500,
-    .te_delta = 100
+    .te_delta = 200
 };
 
 
@@ -109,20 +109,47 @@ ManchesterEvent level_and_duration_to_event(bool level, uint32_t duration) {
 
 void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t duration) {
     furi_assert(context);
-    SubGhzProtocolDecoderOregon* instance = context;
+//    SubGhzProtocolDecoderOregon* instance = context;
     ManchesterEvent event = level_and_duration_to_event(level, duration);
-    bool data;
-    ManchesterState old_state = instance->manchester_state;
+//    bool data;
+//    ManchesterState old_state = instance->manchester_state;
 
-    manchester_advance(
-        instance->manchester_state,
-        event,
-        &instance->manchester_state,
-        &data);
-
-    if (old_state != instance->manchester_state) {
-        FURI_LOG_I(TAG, "New state %d -> %d", old_state, instance->manchester_state);
+    if (level) {
+        if(duration > 9000)
+            FURI_LOG_I(TAG, "^^^^^^^^^^^^^^ %lu", duration);
+        else
+            FURI_LOG_I(TAG, "^^^^ %lu", duration);
     }
+    else {
+        if (duration > 9000)
+            FURI_LOG_I(TAG, "_____________ %lu", duration);
+        else
+            FURI_LOG_I(TAG, "____ %lu", duration);
+    }
+
+    if (event == ManchesterEventLongHigh)
+        FURI_LOG_I(TAG, "long high");
+    else if (event == ManchesterEventLongLow)
+        FURI_LOG_I(TAG, "long low");
+    else if (event == ManchesterEventShortHigh)
+        FURI_LOG_I(TAG, "short high");
+    else if (event == ManchesterEventShortLow)
+        FURI_LOG_I(TAG, "short low");
+    else
+        FURI_LOG_I(TAG, "reset");
+
+
+//    if (manchester_advance(
+//        instance->manchester_state,
+//        event,
+//        &instance->manchester_state,
+//        &data))
+//    {
+//        FURI_LOG_I(TAG, "New bit: %d", data);
+//    }
+//    if (old_state != instance->manchester_state) {
+//        FURI_LOG_I(TAG, "New state %d -> %d", old_state, instance->manchester_state);
+//    }
 }
 
 
