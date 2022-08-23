@@ -14,6 +14,13 @@ static const SubGhzBlockConst oregon_const = {
     .te_delta = 200
 };
 
+#define OREGON_V2_PREAMBLE_BITS 19
+#define OREGON_V2_PREAMBLE_MASK ((1 << (OREGON_V2_PREAMBLE_BITS+1)) - 1)
+
+// 15 ones + 0101 (inverted A)
+#define OREGON_V2_PREAMBLE 0b1111111111111110101
+
+
 
 struct SubGhzProtocolDecoderOregon {
     SubGhzProtocolDecoderBase base;
@@ -23,7 +30,6 @@ struct SubGhzProtocolDecoderOregon {
     ManchesterState manchester_state;
     bool prev_bit;
     bool have_bit;
-    bool show_events;
 };
 
 
@@ -78,6 +84,8 @@ void subghz_protocol_decoder_oregon_reset(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderOregon* instance = context;
     instance->decoder.parser_step = OregonDecoderStepReset;
+    instance->decoder.decode_data = 0UL;
+    instance->decoder.decode_count_bit = 0;
     manchester_advance(
         instance->manchester_state,
         ManchesterEventReset,
@@ -85,7 +93,6 @@ void subghz_protocol_decoder_oregon_reset(void* context) {
         NULL);
     instance->prev_bit = false;
     instance->have_bit = false;
-    instance->show_events = false;
 }
 
 
@@ -119,36 +126,17 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
     // oregon signal is inverted
     ManchesterEvent event = level_and_duration_to_event(!level, duration);
     bool data;
-    //ManchesterState old_state = instance->manchester_state;
 
     if (!level) {
         if (duration > 9000) {
             FURI_LOG_I(TAG, "_____________ %lu", duration);
-            instance->show_events = true;
         }
     }
 
-    if (instance->show_events) {
-        if (level)
-            FURI_LOG_I(TAG, "^^^^ %lu", duration);
-        else
-            FURI_LOG_I(TAG, "____ %lu", duration);
-    }
-
-//    if (event == ManchesterEventLongHigh)
-//        FURI_LOG_I(TAG, "long high: %lu", duration);
-//    else if (event == ManchesterEventLongLow)
-//        FURI_LOG_I(TAG, "long low: %lu", duration);
-//    else if (event == ManchesterEventShortHigh)
-//        FURI_LOG_I(TAG, "short high: %lu", duration);
-//    else if (event == ManchesterEventShortLow)
-//        FURI_LOG_I(TAG, "short low: %lu", duration);
-//    else
-//        FURI_LOG_I(TAG, "reset: %lu", duration);
-
+    // low-level bit sequence decoding
     if (event == ManchesterEventReset) {
         instance->prev_bit = false;
-        instance->have_bit = false;  // first bit is assumed to be zero from my captures
+        instance->have_bit = false;
     }
     if (manchester_advance(
         instance->manchester_state,
@@ -159,14 +147,12 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
         FURI_LOG_I(TAG, "Man: %d", data);
         if (instance->have_bit) {
             if(!instance->prev_bit && data) {
-                FURI_LOG_I(TAG, "New bit: 1");
+                subghz_protocol_blocks_add_bit(&instance->decoder, 1);
             } else if(instance->prev_bit && !data) {
-                FURI_LOG_I(TAG, "New bit: 0");
+                subghz_protocol_blocks_add_bit(&instance->decoder, 0);
             } else {
-                //subghz_protocol_decoder_oregon_reset(context);
+                subghz_protocol_decoder_oregon_reset(context);
                 FURI_LOG_I(TAG, "Wrong bit combination, reset");
-                FURI_LOG_I(TAG, "prev: %d", instance->prev_bit);
-                FURI_LOG_I(TAG, "curr: %d", data);
             }
             instance->have_bit = false;
         }
@@ -175,10 +161,16 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
             instance->have_bit = true;
         }
     }
-    //FURI_LOG_I(TAG, "Man state: %d -> %d", old_state, instance->manchester_state);
-//    if (old_state != instance->manchester_state) {
-//        FURI_LOG_I(TAG, "New state %d -> %d", old_state, instance->manchester_state);
-//    }
+
+    if (instance->decoder.parser_step == OregonDecoderStepReset) {
+        // check for preamble + sync bits
+        if (instance->decoder.decode_count_bit >= OREGON_V2_PREAMBLE_BITS &&
+            ((instance->decoder.decode_data & OREGON_V2_PREAMBLE_MASK) == OREGON_V2_PREAMBLE))
+        {
+            FURI_LOG_I(TAG, "Oregon v2.1 preamble detected!");
+            instance->decoder.parser_step = OregonDecoderStepFoundPreamble;
+        }
+    }
 }
 
 
