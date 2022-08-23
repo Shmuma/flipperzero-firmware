@@ -21,6 +21,9 @@ struct SubGhzProtocolDecoderOregon {
     SubGhzBlockDecoder decoder;
     SubGhzBlockGeneric generic;
     ManchesterState manchester_state;
+    bool prev_bit;
+    bool have_bit;
+    bool show_events;
 };
 
 
@@ -80,6 +83,9 @@ void subghz_protocol_decoder_oregon_reset(void* context) {
         ManchesterEventReset,
         &instance->manchester_state,
         NULL);
+    instance->prev_bit = false;
+    instance->have_bit = false;
+    instance->show_events = false;
 }
 
 
@@ -109,44 +115,67 @@ ManchesterEvent level_and_duration_to_event(bool level, uint32_t duration) {
 
 void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t duration) {
     furi_assert(context);
-//    SubGhzProtocolDecoderOregon* instance = context;
-    ManchesterEvent event = level_and_duration_to_event(level, duration);
-//    bool data;
-//    ManchesterState old_state = instance->manchester_state;
+    SubGhzProtocolDecoderOregon* instance = context;
+    // oregon signal is inverted
+    ManchesterEvent event = level_and_duration_to_event(!level, duration);
+    bool data;
+    //ManchesterState old_state = instance->manchester_state;
 
-    if (level) {
-        if(duration > 9000)
-            FURI_LOG_I(TAG, "^^^^^^^^^^^^^^ %lu", duration);
-        else
-            FURI_LOG_I(TAG, "^^^^ %lu", duration);
-    }
-    else {
-        if (duration > 9000)
+    if (!level) {
+        if (duration > 9000) {
             FURI_LOG_I(TAG, "_____________ %lu", duration);
+            instance->show_events = true;
+        }
+    }
+
+    if (instance->show_events) {
+        if (level)
+            FURI_LOG_I(TAG, "^^^^ %lu", duration);
         else
             FURI_LOG_I(TAG, "____ %lu", duration);
     }
 
-    if (event == ManchesterEventLongHigh)
-        FURI_LOG_I(TAG, "long high");
-    else if (event == ManchesterEventLongLow)
-        FURI_LOG_I(TAG, "long low");
-    else if (event == ManchesterEventShortHigh)
-        FURI_LOG_I(TAG, "short high");
-    else if (event == ManchesterEventShortLow)
-        FURI_LOG_I(TAG, "short low");
-    else
-        FURI_LOG_I(TAG, "reset");
+//    if (event == ManchesterEventLongHigh)
+//        FURI_LOG_I(TAG, "long high: %lu", duration);
+//    else if (event == ManchesterEventLongLow)
+//        FURI_LOG_I(TAG, "long low: %lu", duration);
+//    else if (event == ManchesterEventShortHigh)
+//        FURI_LOG_I(TAG, "short high: %lu", duration);
+//    else if (event == ManchesterEventShortLow)
+//        FURI_LOG_I(TAG, "short low: %lu", duration);
+//    else
+//        FURI_LOG_I(TAG, "reset: %lu", duration);
 
-
-//    if (manchester_advance(
-//        instance->manchester_state,
-//        event,
-//        &instance->manchester_state,
-//        &data))
-//    {
-//        FURI_LOG_I(TAG, "New bit: %d", data);
-//    }
+    if (event == ManchesterEventReset) {
+        instance->prev_bit = false;
+        instance->have_bit = false;  // first bit is assumed to be zero from my captures
+    }
+    if (manchester_advance(
+        instance->manchester_state,
+        event,
+        &instance->manchester_state,
+        &data))
+    {
+        FURI_LOG_I(TAG, "Man: %d", data);
+        if (instance->have_bit) {
+            if(!instance->prev_bit && data) {
+                FURI_LOG_I(TAG, "New bit: 1");
+            } else if(instance->prev_bit && !data) {
+                FURI_LOG_I(TAG, "New bit: 0");
+            } else {
+                //subghz_protocol_decoder_oregon_reset(context);
+                FURI_LOG_I(TAG, "Wrong bit combination, reset");
+                FURI_LOG_I(TAG, "prev: %d", instance->prev_bit);
+                FURI_LOG_I(TAG, "curr: %d", data);
+            }
+            instance->have_bit = false;
+        }
+        else {
+            instance->prev_bit = data;
+            instance->have_bit = true;
+        }
+    }
+    //FURI_LOG_I(TAG, "Man state: %d -> %d", old_state, instance->manchester_state);
 //    if (old_state != instance->manchester_state) {
 //        FURI_LOG_I(TAG, "New state %d -> %d", old_state, instance->manchester_state);
 //    }
