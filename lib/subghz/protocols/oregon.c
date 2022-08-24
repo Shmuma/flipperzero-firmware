@@ -30,12 +30,18 @@ struct SubGhzProtocolDecoderOregon {
     ManchesterState manchester_state;
     bool prev_bit;
     bool have_bit;
+
+    uint16_t sensor_id;
+    uint8_t channel;
+    uint8_t rolling_code;
+    uint8_t flags;
 };
 
 
 typedef enum {
     OregonDecoderStepReset = 0,
     OregonDecoderStepFoundPreamble,
+    OregonDecoderStepVarData,
 } OregonDecoderStep;
 
 
@@ -169,6 +175,27 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
         {
             FURI_LOG_I(TAG, "Oregon v2.1 preamble detected!");
             instance->decoder.parser_step = OregonDecoderStepFoundPreamble;
+            instance->decoder.decode_count_bit = 0;
+            instance->decoder.decode_data = 0UL;
+        }
+    } else if (instance->decoder.parser_step == OregonDecoderStepFoundPreamble) {
+        if (instance->decoder.decode_count_bit == 32) {
+            // reverse nibbles in decoded data
+            instance->decoder.decode_data = (instance->decoder.decode_data & 0x55555555) << 1 |
+                                            (instance->decoder.decode_data & 0xAAAAAAAA) >> 1;
+            instance->decoder.decode_data = (instance->decoder.decode_data & 0x33333333) << 2 |
+                                            (instance->decoder.decode_data & 0xCCCCCCCC) >> 2;
+
+            instance->sensor_id = instance->decoder.decode_data >> 16;
+            instance->channel = (instance->decoder.decode_data >> 12) & 0xF;
+            instance->rolling_code = (instance->decoder.decode_data >> 4) & 0xFF;
+            instance->flags = instance->decoder.decode_data & 0xF;
+            FURI_LOG_I(TAG, "SensorID = %x", instance->sensor_id);
+            FURI_LOG_I(TAG, "Channel = %u", instance->channel);
+            FURI_LOG_I(TAG, "Rolling code = %x", instance->rolling_code);
+            FURI_LOG_I(TAG, "Flags = %u", instance->flags);
+
+            instance->decoder.parser_step = OregonDecoderStepVarData;
         }
     }
 }
