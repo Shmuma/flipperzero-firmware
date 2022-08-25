@@ -55,7 +55,7 @@ const SubGhzProtocolDecoder subghz_protocol_oregon_decoder = {
 //    .get_hash_data = subghz_protocol_decoder_oregon_get_hash_data,
 //    .serialize = subghz_protocol_decoder_oregon_serialize,
 //    .deserialize = subghz_protocol_decoder_oregon_deserialize,
-//    .get_string = subghz_protocol_decoder_oregon_get_string,
+    .get_string = subghz_protocol_decoder_oregon_get_string,
 };
 
 
@@ -196,6 +196,8 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
             FURI_LOG_I(TAG, "Flags = %u", instance->flags);
 
             instance->decoder.parser_step = OregonDecoderStepVarData;
+            if (instance->base.callback)
+                instance->base.callback(&instance->base, instance->base.context);
         }
     }
 }
@@ -235,21 +237,21 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
 //    return ret;
 //}
 //
-//void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
-//    furi_assert(context);
-//    SubGhzProtocolDecoderOregon* instance = context;
-////    subghz_protocol_oregon_check_remote_controller(&instance->generic);
-//    string_cat_printf(
-//        output,
-//        "%s %dbit\r\n",
-////        "Key:%02lX%08lX\r\n"
-////        "Btn:%lX\r\n"
-////        "DIP:" DIP_PATTERN "\r\n",
-//        instance->generic.protocol_name,
-//        instance->generic.data_count_bit
-////        (uint32_t)(instance->generic.data >> 32) & 0xFFFFFFFF,
-////        (uint32_t)(instance->generic.data & 0xFFFFFFFF),
-////        instance->generic.btn,
-////        CNT_TO_DIP(instance->generic.cnt)
-//    );
-//}
+
+void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
+    furi_assert(context);
+    SubGhzProtocolDecoderOregon* instance = context;
+    string_cat_printf(
+        output,
+        "%s v2.1\r\n"
+        "SensorID: 0x%hX\r\n"
+        "Channel: %hhd\r\n"
+        "Rolling: 0x%hhX\r\n"
+        "Flags: %hhd\r\n",
+        instance->generic.protocol_name,
+        instance->sensor_id,
+        instance->channel,
+        instance->rolling_code,
+        instance->flags
+    );
+}
