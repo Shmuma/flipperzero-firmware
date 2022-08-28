@@ -4,6 +4,7 @@
 #include "../blocks/generic.h"
 #include "../blocks/math.h"
 #include <lib/toolbox/manchester_decoder.h>
+#include <m-string.h>
 
 #define TAG "SubGhzProtocolOregon"
 
@@ -17,6 +18,7 @@ static const SubGhzBlockConst oregon_const = {
 
 #define OREGON_V2_PREAMBLE_BITS 19
 #define OREGON_V2_PREAMBLE_MASK ((1 << (OREGON_V2_PREAMBLE_BITS+1)) - 1)
+#define OREGON_V2_CHECKSUM_BITS 8
 
 // 15 ones + 0101 (inverted A)
 #define OREGON_V2_PREAMBLE 0b1111111111111110101
@@ -33,6 +35,10 @@ struct SubGhzProtocolDecoderOregon {
     ManchesterState manchester_state;
     bool prev_bit;
     bool have_bit;
+
+    uint16_t sensor_id;
+    uint8_t var_bits;
+    uint32_t var_data;
 };
 
 
@@ -123,6 +129,14 @@ ManchesterEvent level_and_duration_to_event(bool level, uint32_t duration) {
 }
 
 
+// From sensor id code return amount of bits in variable section
+static uint8_t oregon_sensor_id_var_bits(uint16_t sensor_id) {
+    if (sensor_id == 0xEC40)
+        return 16;
+    return 0;
+}
+
+
 void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t duration) {
     furi_assert(context);
     SubGhzProtocolDecoderOregon* instance = context;
@@ -172,6 +186,8 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
         if (instance->decoder.decode_count_bit == 32) {
             instance->generic.data = instance->decoder.decode_data;
             instance->generic.data_count_bit = instance->decoder.decode_count_bit;
+            instance->decoder.decode_data = 0UL;
+            instance->decoder.decode_count_bit = 0;
 
             // reverse nibbles in decoded data
             instance->generic.data = (instance->generic.data & 0x55555555) << 1 |
@@ -179,10 +195,34 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
             instance->generic.data = (instance->generic.data & 0x33333333) << 2 |
                                      (instance->generic.data & 0xCCCCCCCC) >> 2;
 
+            instance->sensor_id = (instance->generic.data >> 16) & 0xFFFF;
+            instance->var_bits = oregon_sensor_id_var_bits(instance->sensor_id);
+
+            if (!instance->var_bits) {
+                // sensor is not supported, stop decoding
+                instance->decoder.parser_step = OregonDecoderStepReset;
+                if(instance->base.callback)
+                    instance->base.callback(&instance->base, instance->base.context);
+            } else {
+                instance->decoder.parser_step = OregonDecoderStepVarData;
+            }
+        }
+    }
+    else if (instance->decoder.parser_step == OregonDecoderStepVarData) {
+        if (instance->decoder.decode_count_bit == instance->var_bits + OREGON_V2_CHECKSUM_BITS) {
+            instance->var_data = instance->decoder.decode_data & 0xFFFFFFFF;
+
+            // reverse nibbles in var data
+            instance->var_data = (instance->var_data & 0x55555555) << 1 |
+                                 (instance->var_data & 0xAAAAAAAA) >> 1;
+            instance->var_data = (instance->var_data & 0x33333333) << 2 |
+                                 (instance->var_data & 0xCCCCCCCC) >> 2;
+
+            FURI_LOG_I(TAG, "Var data: %lX", instance->var_data);
+
             instance->decoder.parser_step = OregonDecoderStepReset;
-            if (instance->base.callback)
+            if(instance->base.callback)
                 instance->base.callback(&instance->base, instance->base.context);
-            //subghz_protocol_decoder_oregon_reset(context);
         }
     }
 }
@@ -223,6 +263,31 @@ bool subghz_protocol_decoder_oregon_deserialize(void* context, FlipperFormat* fl
 }
 
 
+// append string of the variable data
+static void oregon_var_data_append_string(uint16_t sensor_id, uint32_t var_data, string_t output) {
+    uint32_t val;
+    uint8_t checksum = var_data & 0xFF;
+    var_data >>= 8;
+
+    if (sensor_id == 0xEC40) {
+        val = ((var_data >> 4) & 0xF) * 10 + ((var_data >> 8) & 0xF);
+        string_cat_printf(
+            output,
+            "Temp: %s%d.%d C\r\n",
+            (var_data & 0xF) ? "-" : "+",
+            val,
+            (uint32_t)(var_data >> 12) & 0xF
+        );
+    }
+
+    string_cat_printf(
+        output,
+        "CRC: %X",
+        checksum
+    );
+}
+
+
 void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
     furi_assert(context);
     SubGhzProtocolDecoderOregon* instance = context;
@@ -230,11 +295,14 @@ void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
         output,
         "%s v2.1\r\n"
         "ID: 0x%04lX, ch: %d%s\r\n"
-        "Rolling: 0x%02lX%s\r\n",
+        "Rolling: 0x%02lX\r\n",
         instance->generic.protocol_name,
-        (uint32_t)(instance->generic.data >> 16) & 0xFFFF,
+        instance->sensor_id,
         (uint32_t)(instance->generic.data >> 12) & 0xF,
         ((instance->generic.data & OREGON_V2_FLAG_BAT_LOW) ? ", low bat" : ""),
         (uint32_t)(instance->generic.data >> 4) & 0xFF
     );
+
+    if (instance->var_bits)
+        oregon_var_data_append_string(instance->sensor_id, instance->var_data, output);
 }
