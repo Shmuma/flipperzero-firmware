@@ -63,7 +63,7 @@ const SubGhzProtocol subghz_protocol_oregon = {
     .name = SUBGHZ_PROTOCOL_OREGON_NAME,
     .type = SubGhzProtocolTypeStatic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_AM | SubGhzProtocolFlag_Decodable |
-            SubGhzProtocolFlag_Load | SubGhzProtocolFlag_Save | SubGhzProtocolFlag_Send,
+            SubGhzProtocolFlag_Load | SubGhzProtocolFlag_Save, //| SubGhzProtocolFlag_Send,
 
     .decoder = &subghz_protocol_oregon_decoder,
 //    .encoder = &subghz_protocol_oregon_encoder,
@@ -181,7 +181,7 @@ void subghz_protocol_decoder_oregon_feed(void* context, bool level, uint32_t dur
             instance->generic.data = (instance->generic.data & 0x33333333) << 2 |
                                      (instance->generic.data & 0xCCCCCCCC) >> 2;
 
-            instance->decoder.parser_step = OregonDecoderStepVarData;
+            instance->decoder.parser_step = OregonDecoderStepReset;
             if (instance->base.callback)
                 instance->base.callback(&instance->base, instance->base.context);
             //subghz_protocol_decoder_oregon_reset(context);
@@ -231,14 +231,12 @@ void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
     string_cat_printf(
         output,
         "%s v2.1\r\n"
-        "SensorID: 0x%hX\r\n"
-        "Channel: %hhd\r\n"
-        "Rolling: 0x%hhX\r\n"
-        "Flags: %hhd\r\n",
+        "ID: 0x%04lX, ch: %d\r\n"
+        "Rolling: 0x%02lX, flags: %d\r\n",
         instance->generic.protocol_name,
-        (instance->decoder.decode_data >> 16) & 0xFFFF,
-        (instance->decoder.decode_data >> 12) & 0xF,
-        (instance->decoder.decode_data >> 4) & 0xFF,
-        instance->decoder.decode_data & 0xF
+        (uint32_t)(instance->generic.data >> 16) & 0xFFFF,
+        (uint32_t)(instance->generic.data >> 12) & 0xF,
+        (uint32_t)(instance->generic.data >> 4) & 0xFF,
+        (uint32_t)instance->generic.data & 0xF
     );
 }
