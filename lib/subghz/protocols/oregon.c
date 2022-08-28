@@ -21,6 +21,9 @@ static const SubGhzBlockConst oregon_const = {
 // 15 ones + 0101 (inverted A)
 #define OREGON_V2_PREAMBLE 0b1111111111111110101
 
+// bit indicating the low battery
+#define OREGON_V2_FLAG_BAT_LOW 0x4
+
 
 struct SubGhzProtocolDecoderOregon {
     SubGhzProtocolDecoderBase base;
@@ -30,11 +33,6 @@ struct SubGhzProtocolDecoderOregon {
     ManchesterState manchester_state;
     bool prev_bit;
     bool have_bit;
-
-//    uint16_t sensor_id;
-//    uint8_t channel;
-//    uint8_t rolling_code;
-//    uint8_t flags;
 };
 
 
@@ -231,12 +229,12 @@ void subghz_protocol_decoder_oregon_get_string(void* context, string_t output) {
     string_cat_printf(
         output,
         "%s v2.1\r\n"
-        "ID: 0x%04lX, ch: %d\r\n"
-        "Rolling: 0x%02lX, flags: %d\r\n",
+        "ID: 0x%04lX, ch: %d%s\r\n"
+        "Rolling: 0x%02lX%s\r\n",
         instance->generic.protocol_name,
         (uint32_t)(instance->generic.data >> 16) & 0xFFFF,
         (uint32_t)(instance->generic.data >> 12) & 0xF,
-        (uint32_t)(instance->generic.data >> 4) & 0xFF,
-        (uint32_t)instance->generic.data & 0xF
+        ((instance->generic.data & OREGON_V2_FLAG_BAT_LOW) ? ", low bat" : ""),
+        (uint32_t)(instance->generic.data >> 4) & 0xFF
     );
 }
