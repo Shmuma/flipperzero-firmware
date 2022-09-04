@@ -135,8 +135,6 @@ static ManchesterEvent level_and_duration_to_event(bool level, uint32_t duration
 static uint8_t oregon2_sensor_id_var_bits(uint16_t sensor_id) {
     if (sensor_id == 0xEC40)
         return 16;
-    if (sensor_id == 0x1D20 || sensor_id == 0xF824 || sensor_id == 0xF8B4)
-        return 16 + 12;
     return 0;
 }
 
@@ -327,7 +325,7 @@ static void oregon2_append_check_sum(uint32_t fix_data, uint32_t var_data, strin
     if (sum == ref_sum)
         string_cat_printf(output, "Sum ok: 0x%hhX", ref_sum);
     else
-        string_cat_printf(output, "Sum wrong: 0x%hhX, calc 0x%hhX", ref_sum, sum);
+        string_cat_printf(output, "Sum mismatch: 0x%hhX vs calc 0x%hhX", ref_sum, sum);
 }
 
 
