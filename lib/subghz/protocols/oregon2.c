@@ -1,6 +1,7 @@
 #include "oregon2.h"
 #include "../blocks/const.h"
 #include "../blocks/decoder.h"
+#include "../blocks/encoder.h"
 #include "../blocks/generic.h"
 #include "../blocks/math.h"
 #include <lib/toolbox/manchester_decoder.h>
@@ -42,16 +43,16 @@ struct SubGhzProtocolDecoderOregon2 {
     uint32_t var_data;
 };
 
-typedef struct SubGhzProtocolDecoderOregon2 SubGhzProtocolDecoderOregon2;
 
-//
-//struct SubGhzProtocolEncoderOregon2 {
-//    SubGhzProtocolEncoderBase base;
-//
-//    SubGhzProtocolBlockEncoder encoder;
-//    SubGhzBlockGeneric generic;
-//};
-//typedef struct SubGhzProtocolEncoderOregon2 SubGhzProtocolEncoderOregon2;
+struct SubGhzProtocolEncoderOregon2 {
+    SubGhzProtocolEncoderBase base;
+
+    SubGhzProtocolBlockEncoder encoder;
+    SubGhzBlockGeneric generic;
+};
+
+typedef struct SubGhzProtocolDecoderOregon2 SubGhzProtocolDecoderOregon2;
+typedef struct SubGhzProtocolEncoderOregon2 SubGhzProtocolEncoderOregon2;
 
 
 typedef enum {
@@ -61,13 +62,119 @@ typedef enum {
 } Oregon2DecoderStep;
 
 
-//
-//void* subghz_protocol_encoder_oregon2_alloc(SubGhzEnvironment* environment) {
-//    UNUSED(environment);
-//    SubGhzProtocolEncod* instance = malloc(sizeof(SubGhzProtocolEncoderOregon2));
-//}
+// Encoder functions
+void* subghz_protocol_encoder_oregon2_alloc(SubGhzEnvironment* environment) {
+    UNUSED(environment);
+    SubGhzProtocolEncoderOregon2* instance = malloc(sizeof(SubGhzProtocolEncoderOregon2));
+
+    instance->base.protocol = &subghz_protocol_oregon2;
+    instance->generic.protocol_name = instance->base.protocol->name;
+    instance->encoder.repeat = 2;
+    instance->encoder.size_upload = 128;
+    instance->encoder.upload = malloc(instance->encoder.size_upload * sizeof(LevelDuration));
+    instance->encoder.is_running = false;
+    return instance;
+}
 
 
+void subghz_protocol_encoder_oregon2_free(void* context) {
+    furi_assert(context);
+    SubGhzProtocolEncoderOregon2* instance = context;
+    free(instance->encoder.upload);
+    free(instance);
+}
+
+
+static bool subghz_protocol_encoder_oregon2_get_upload(SubGhzProtocolEncoderOregon2* instance) {
+    furi_assert(instance);
+    size_t index = 0;
+
+    // TODO: check upload buffer size
+
+    instance->encoder.upload[index++] =
+        level_duration_make(false, (uint32_t)oregon2_const.te_long);
+    instance->encoder.upload[index++] =
+        level_duration_make(true, (uint32_t)oregon2_const.te_long);
+    instance->encoder.upload[index++] =
+        level_duration_make(false, (uint32_t)oregon2_const.te_long);
+    instance->encoder.upload[index++] =
+        level_duration_make(true, (uint32_t)oregon2_const.te_long);
+    instance->encoder.size_upload = index;
+    return true;
+}
+
+
+bool subghz_protocol_encoder_oregon2_deserialize(void* context, FlipperFormat* flipper_format) {
+    furi_assert(context);
+    SubGhzProtocolEncoderOregon2* instance = context;
+    uint32_t temp_data;
+    uint8_t var_bits = 0;
+    uint32_t var_data = 0UL;
+    bool res = false;
+
+    do {
+        if(!subghz_block_generic_deserialize(&instance->generic, flipper_format)) {
+            FURI_LOG_E(TAG, "Deserialize error");
+            break;
+        }
+        if(instance->generic.data_count_bit != oregon2_const.min_count_bit_for_found) {
+            FURI_LOG_E(TAG, "Wrong number of bits in key: %d", instance->generic.data_count_bit);
+            break;
+        }
+
+        if(!flipper_format_read_uint32(flipper_format, "VarBits", &temp_data, 1)) {
+            FURI_LOG_E(TAG, "Missing VarLen");
+            break;
+        }
+        var_bits = (uint8_t)temp_data;
+        if(!flipper_format_read_hex(
+               flipper_format, "VarData", (uint8_t*)&var_data, sizeof(var_data))) {
+            FURI_LOG_E(TAG, "Missing VarData");
+            break;
+        }
+
+        FURI_LOG_I(TAG, "Var bits: %d", var_bits);
+        FURI_LOG_I(TAG, "Var data: %X", var_data);
+
+        if (!subghz_protocol_encoder_oregon2_get_upload(instance)) {
+            FURI_LOG_E(TAG, "Get upload error");
+            break;
+        }
+        instance->encoder.is_running = true;
+
+        res = true;
+    } while(false);
+
+    return res;
+}
+
+
+void subghz_protocol_encoder_oregon2_stop(void* context) {
+    SubGhzProtocolEncoderOregon2* instance = context;
+    instance->encoder.is_running = false;
+}
+
+
+LevelDuration subghz_protocol_encoder_oregon2_yield(void* context) {
+    SubGhzProtocolEncoderOregon2* instance = context;
+
+    if(instance->encoder.repeat == 0 || !instance->encoder.is_running) {
+        instance->encoder.is_running = false;
+        return level_duration_reset();
+    }
+
+    LevelDuration ret = instance->encoder.upload[instance->encoder.front];
+
+    if(++instance->encoder.front == instance->encoder.size_upload) {
+        instance->encoder.repeat--;
+        instance->encoder.front = 0;
+    }
+
+    return ret;
+}
+
+
+// Decoder functions
 void* subghz_protocol_decoder_oregon2_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolDecoderOregon2* instance = malloc(sizeof(SubGhzProtocolDecoderOregon2));
@@ -102,7 +209,7 @@ void subghz_protocol_decoder_oregon2_reset(void* context) {
 
 // TODO: move this into generic subghz lib
 static ManchesterEvent level_and_duration_to_event(bool level, uint32_t duration) {
-    bool is_long = false;
+    bool is_long;
 
     if (DURATION_DIFF(duration, oregon2_const.te_long) < oregon2_const.te_delta) {
         is_long = true;
@@ -366,18 +473,22 @@ const SubGhzProtocolDecoder subghz_protocol_oregon2_decoder = {
 };
 
 
-//const SubGhzProtocolEncoder subghz_protocol_oregon2_encoder = {
-//    .alloc = subghz_protocol_encoder_oregon2_alloc,
-//    .free = subghz_protocol_encoder_oregon2_free,
-//};
+const SubGhzProtocolEncoder subghz_protocol_oregon2_encoder = {
+    .alloc = subghz_protocol_encoder_oregon2_alloc,
+    .free = subghz_protocol_encoder_oregon2_free,
+
+    .deserialize = subghz_protocol_encoder_oregon2_deserialize,
+    .stop = subghz_protocol_encoder_oregon2_stop,
+    .yield = subghz_protocol_encoder_oregon2_yield,
+};
 
 
 const SubGhzProtocol subghz_protocol_oregon2 = {
     .name = "Oregon2",
     .type = SubGhzProtocolTypeStatic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_AM | SubGhzProtocolFlag_Decodable |
-            SubGhzProtocolFlag_Load | SubGhzProtocolFlag_Save, // | SubGhzProtocolFlag_Send,
+            SubGhzProtocolFlag_Load | SubGhzProtocolFlag_Save | SubGhzProtocolFlag_Send,
 
     .decoder = &subghz_protocol_oregon2_decoder,
-    //    .encoder = &subghz_protocol_oregon2_encoder,
+    .encoder = &subghz_protocol_oregon2_encoder,
 };
