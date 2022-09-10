@@ -118,8 +118,6 @@ static size_t nibble_to_upload(ManchesterEncoderState* state, uint8_t nibble, Le
     nibble = (nibble & 0x5) << 1 | (nibble & 0xA) >> 1;
     nibble = (nibble & 0x3) << 2 | (nibble & 0xC) >> 2;
 
-    FURI_LOG_I(TAG, "Nibble swapped 0x%hhX", nibble);
-
     for (uint8_t i = 0; i < 4; i++) {
         // Every bit is encoded with 01 or 10 bits
         if (nibble & 1) {
@@ -142,18 +140,37 @@ static size_t nibble_to_upload(ManchesterEncoderState* state, uint8_t nibble, Le
 }
 
 
-static bool subghz_protocol_encoder_oregon2_get_upload(SubGhzProtocolEncoderOregon2* instance) {
+static bool subghz_protocol_encoder_oregon2_get_upload(
+    SubGhzProtocolEncoderOregon2* instance, uint8_t var_bits, uint32_t var_data)
+{
     furi_assert(instance);
     size_t index = 0;
+    uint8_t data;
+    int8_t ofs;
     ManchesterEncoderState enc_state;
 
+    // TODO: check buffer size
     manchester_encoder_reset(&enc_state);
 
     // encode preamble
     index += nibble_to_upload(&enc_state, 0xF, instance->encoder.upload + index);
     index += nibble_to_upload(&enc_state, 0xF, instance->encoder.upload + index);
     index += nibble_to_upload(&enc_state, 0xA, instance->encoder.upload + index);
+
+    // fixed data is 32 bits
+    for (ofs = 7*4; ofs >= 0; ofs -= 4) {
+        data = (instance->generic.data >> ofs) & 0xF;
+        index += nibble_to_upload(&enc_state, data, instance->encoder.upload + index);
+    }
+
+    // variable size
+    for (ofs = (var_bits + OREGON2_CHECKSUM_BITS)-4; ofs >= 0; ofs -= 4) {
+        data = (var_data >> ofs) & 0xF;
+        index += nibble_to_upload(&enc_state, data, instance->encoder.upload + index);
+    }
+
     FURI_LOG_I(TAG, "Upload %d", index);
+    FURI_LOG_I(TAG, "Buf size %d", instance->encoder.size_upload);
 
     instance->encoder.size_upload = index;
     return true;
@@ -184,12 +201,12 @@ bool subghz_protocol_encoder_oregon2_deserialize(void* context, FlipperFormat* f
         }
         var_bits = (uint8_t)temp_data;
         if(!flipper_format_read_hex(
-               flipper_format, "VarData", (uint8_t*)&var_data, var_bits >> 3)) {
+               flipper_format, "VarData", (uint8_t*)&var_data, sizeof(var_data))) {
             FURI_LOG_E(TAG, "Missing VarData");
             break;
         }
 
-        if (!subghz_protocol_encoder_oregon2_get_upload(instance)) {
+        if (!subghz_protocol_encoder_oregon2_get_upload(instance, var_bits, var_data)) {
             FURI_LOG_E(TAG, "Get upload error");
             break;
         }
