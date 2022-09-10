@@ -5,6 +5,8 @@
 #include "../blocks/generic.h"
 #include "../blocks/math.h"
 #include <lib/toolbox/manchester_decoder.h>
+#include <lib/toolbox/manchester_encoder.h>
+#include <lib/toolbox/level_duration.h>
 #include <lib/flipper_format/flipper_format_i.h>
 #include <m-string.h>
 
@@ -21,7 +23,7 @@ static const SubGhzBlockConst oregon2_const = {
 #define OREGON2_PREAMBLE_BITS 19
 #define OREGON2_PREAMBLE_MASK ((1 << (OREGON2_PREAMBLE_BITS+1)) - 1)
 #define OREGON2_SENSOR_ID(d) (((d) >> 16) & 0xFFFF)
-#define OREGON2_CHECKSUM_BITS 8
+#define OREGON2_CHECKSUM_BITS 16
 
 // 15 ones + 0101 (inverted A)
 #define OREGON2_PREAMBLE 0b1111111111111110101
@@ -69,8 +71,13 @@ void* subghz_protocol_encoder_oregon2_alloc(SubGhzEnvironment* environment) {
 
     instance->base.protocol = &subghz_protocol_oregon2;
     instance->generic.protocol_name = instance->base.protocol->name;
-    instance->encoder.repeat = 2;
-    instance->encoder.size_upload = 128;
+    instance->encoder.repeat = 1;
+
+    uint16_t data_bits = OREGON2_PREAMBLE_BITS + 1;
+    data_bits += oregon2_const.min_count_bit_for_found;
+    data_bits += 32 + OREGON2_CHECKSUM_BITS;
+
+    instance->encoder.size_upload = data_bits * 2;
     instance->encoder.upload = malloc(instance->encoder.size_upload * sizeof(LevelDuration));
     instance->encoder.is_running = false;
     return instance;
@@ -85,20 +92,69 @@ void subghz_protocol_encoder_oregon2_free(void* context) {
 }
 
 
+// oregon manchester is inverted!
+static LevelDuration manchester_to_level_and_duration(ManchesterEncoderResult enc_res) {
+    switch (enc_res) {
+    case ManchesterEncoderResultShortLow:
+        return level_duration_make(true, oregon2_const.te_short);
+    case ManchesterEncoderResultShortHigh:
+        return level_duration_make(false, oregon2_const.te_short);
+    case ManchesterEncoderResultLongLow:
+        return level_duration_make(true, oregon2_const.te_long);
+    default:
+    case ManchesterEncoderResultLongHigh:
+        return level_duration_make(false, oregon2_const.te_long);
+    }
+}
+
+
+static size_t nibble_to_upload(ManchesterEncoderState* state, uint8_t nibble, LevelDuration* dest) {
+    ManchesterEncoderResult enc_res;
+    size_t ofs = 0;
+
+    FURI_LOG_I(TAG, "Nibble 0x%hhX", nibble);
+
+    // swap nibble bits
+    nibble = (nibble & 0x5) << 1 | (nibble & 0xA) >> 1;
+    nibble = (nibble & 0x3) << 2 | (nibble & 0xC) >> 2;
+
+    FURI_LOG_I(TAG, "Nibble swapped 0x%hhX", nibble);
+
+    for (uint8_t i = 0; i < 4; i++) {
+        // Every bit is encoded with 01 or 10 bits
+        if (nibble & 1) {
+            FURI_LOG_I(TAG, "Enc 10");
+            manchester_encoder_advance(state, true, &enc_res);
+            dest[ofs++] = manchester_to_level_and_duration(enc_res);
+            manchester_encoder_advance(state, false, &enc_res);
+            dest[ofs++] = manchester_to_level_and_duration(enc_res);
+        } else {
+            FURI_LOG_I(TAG, "Enc 01");
+            manchester_encoder_advance(state, false, &enc_res);
+            dest[ofs++] = manchester_to_level_and_duration(enc_res);
+            manchester_encoder_advance(state, false, &enc_res);
+            dest[ofs++] = manchester_to_level_and_duration(enc_res);
+        }
+        nibble >>= 1;
+    }
+
+    return ofs;
+}
+
+
 static bool subghz_protocol_encoder_oregon2_get_upload(SubGhzProtocolEncoderOregon2* instance) {
     furi_assert(instance);
     size_t index = 0;
+    ManchesterEncoderState enc_state;
 
-    // TODO: check upload buffer size
+    manchester_encoder_reset(&enc_state);
 
-    instance->encoder.upload[index++] =
-        level_duration_make(false, (uint32_t)oregon2_const.te_long);
-    instance->encoder.upload[index++] =
-        level_duration_make(true, (uint32_t)oregon2_const.te_long);
-    instance->encoder.upload[index++] =
-        level_duration_make(false, (uint32_t)oregon2_const.te_long);
-    instance->encoder.upload[index++] =
-        level_duration_make(true, (uint32_t)oregon2_const.te_long);
+    // encode preamble
+    index += nibble_to_upload(&enc_state, 0xF, instance->encoder.upload + index);
+    index += nibble_to_upload(&enc_state, 0xF, instance->encoder.upload + index);
+    index += nibble_to_upload(&enc_state, 0xA, instance->encoder.upload + index);
+    FURI_LOG_I(TAG, "Upload %d", index);
+
     instance->encoder.size_upload = index;
     return true;
 }
@@ -128,13 +184,10 @@ bool subghz_protocol_encoder_oregon2_deserialize(void* context, FlipperFormat* f
         }
         var_bits = (uint8_t)temp_data;
         if(!flipper_format_read_hex(
-               flipper_format, "VarData", (uint8_t*)&var_data, sizeof(var_data))) {
+               flipper_format, "VarData", (uint8_t*)&var_data, var_bits >> 3)) {
             FURI_LOG_E(TAG, "Missing VarData");
             break;
         }
-
-        FURI_LOG_I(TAG, "Var bits: %d", var_bits);
-        FURI_LOG_I(TAG, "Var data: %X", var_data);
 
         if (!subghz_protocol_encoder_oregon2_get_upload(instance)) {
             FURI_LOG_E(TAG, "Get upload error");
@@ -411,8 +464,8 @@ static void oregon2_var_data_append_string(uint16_t sensor_id, uint32_t var_data
 
 static void oregon2_append_check_sum(uint32_t fix_data, uint32_t var_data, string_t output) {
     uint8_t sum = fix_data & 0xF;
-    uint8_t ref_sum = var_data & 0xFF;
-    var_data >>= 8;
+    uint8_t ref_sum = (var_data >> 8) & 0xFF;
+    var_data >>= OREGON2_CHECKSUM_BITS;
 
     for (uint8_t i = 1; i < 8; i++) {
         fix_data >>= 4;
@@ -425,7 +478,7 @@ static void oregon2_append_check_sum(uint32_t fix_data, uint32_t var_data, strin
     if (sum == ref_sum)
         string_cat_printf(output, "Sum ok: 0x%hhX", ref_sum);
     else
-        string_cat_printf(output, "Sum mismatch: 0x%hhX vs calc 0x%hhX", ref_sum, sum);
+        string_cat_printf(output, "Sum err: 0x%hhX vs 0x%hhX", ref_sum, sum);
 }
 
 
