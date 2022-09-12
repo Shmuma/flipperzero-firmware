@@ -71,7 +71,7 @@ void* subghz_protocol_encoder_oregon2_alloc(SubGhzEnvironment* environment) {
 
     instance->base.protocol = &subghz_protocol_oregon2;
     instance->generic.protocol_name = instance->base.protocol->name;
-    instance->encoder.repeat = 1;
+    instance->encoder.repeat = 2;
 
     uint16_t data_bits = OREGON2_PREAMBLE_BITS + 1;
     data_bits += oregon2_const.min_count_bit_for_found;
@@ -94,17 +94,29 @@ void subghz_protocol_encoder_oregon2_free(void* context) {
 
 // oregon manchester is inverted!
 static LevelDuration manchester_to_level_and_duration(ManchesterEncoderResult enc_res) {
+    bool level;
+    uint32_t duration;
+
     switch (enc_res) {
     case ManchesterEncoderResultShortLow:
-        return level_duration_make(true, oregon2_const.te_short);
+        level = true;
+        duration = oregon2_const.te_short;
+        break;
     case ManchesterEncoderResultShortHigh:
-        return level_duration_make(false, oregon2_const.te_short);
+        level = false;
+        duration = oregon2_const.te_short;
+        break;
     case ManchesterEncoderResultLongLow:
-        return level_duration_make(true, oregon2_const.te_long);
+        level = true;
+        duration = oregon2_const.te_long;
+        break;
     default:
     case ManchesterEncoderResultLongHigh:
-        return level_duration_make(false, oregon2_const.te_long);
+        level = false;
+        duration = oregon2_const.te_long;
     }
+    //duration *= 1000;
+    return level_duration_make(level, duration);
 }
 
 
@@ -122,15 +134,27 @@ static size_t nibble_to_upload(ManchesterEncoderState* state, uint8_t nibble, Le
         // Every bit is encoded with 01 or 10 bits
         if (nibble & 1) {
             FURI_LOG_I(TAG, "Enc 10");
-            manchester_encoder_advance(state, true, &enc_res);
+            if (!manchester_encoder_advance(state, true, &enc_res)) {
+                dest[ofs++] = manchester_to_level_and_duration(enc_res);
+                manchester_encoder_advance(state, true, &enc_res);
+            }
             dest[ofs++] = manchester_to_level_and_duration(enc_res);
-            manchester_encoder_advance(state, false, &enc_res);
+
+            if (!manchester_encoder_advance(state, false, &enc_res)) {
+                dest[ofs++] = manchester_to_level_and_duration(enc_res);
+                manchester_encoder_advance(state, false, &enc_res);
+            }
             dest[ofs++] = manchester_to_level_and_duration(enc_res);
         } else {
             FURI_LOG_I(TAG, "Enc 01");
+            if (!manchester_encoder_advance(state, false, &enc_res))
+                dest[ofs++] = manchester_to_level_and_duration(enc_res);
             manchester_encoder_advance(state, false, &enc_res);
             dest[ofs++] = manchester_to_level_and_duration(enc_res);
-            manchester_encoder_advance(state, false, &enc_res);
+
+            if (!manchester_encoder_advance(state, true, &enc_res))
+                dest[ofs++] = manchester_to_level_and_duration(enc_res);
+            manchester_encoder_advance(state, true, &enc_res);
             dest[ofs++] = manchester_to_level_and_duration(enc_res);
         }
         nibble >>= 1;
@@ -506,8 +530,7 @@ void subghz_protocol_decoder_oregon2_get_string(void* context, string_t output) 
     string_cat_printf(
         output,
         "%s\r\n"
-        "ID: 0x%04lX, ch: %d%s\r\n"
-        "Rolling: 0x%02lX\r\n",
+        "ID: 0x%04lX, ch: %d%s, rc: 0x%02lX\r\n",
         instance->generic.protocol_name,
         (uint32_t)sensor_id,
         (uint32_t)(instance->generic.data >> 12) & 0xF,
