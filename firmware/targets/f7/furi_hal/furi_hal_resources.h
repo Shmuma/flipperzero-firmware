@@ -111,10 +111,10 @@ extern const GpioPin gpio_usb_dp;
 #define BUTTON_UP_GPIO_Port GPIOB
 #define BUTTON_UP_Pin LL_GPIO_PIN_10
 
-#define CC1101_CS_GPIO_Port GPIOD
-#define CC1101_CS_Pin LL_GPIO_PIN_0
-#define CC1101_G0_GPIO_Port GPIOA
-#define CC1101_G0_Pin LL_GPIO_PIN_1
+#define CC1101_CS_GPIO_Port GPIOB //GPIOD
+#define CC1101_CS_Pin LL_GPIO_PIN_2 //LL_GPIO_PIN_0
+#define CC1101_G0_GPIO_Port GPIOC //GPIOA
+#define CC1101_G0_Pin LL_GPIO_PIN_0 //LL_GPIO_PIN_1
 
 #define DISPLAY_CS_GPIO_Port GPIOC
 #define DISPLAY_CS_Pin LL_GPIO_PIN_11
@@ -191,12 +191,12 @@ extern const GpioPin gpio_usb_dp;
 #define SPI_D_SCK_GPIO_Port GPIOD
 #define SPI_D_SCK_Pin LL_GPIO_PIN_1
 
-#define SPI_R_MISO_GPIO_Port GPIOB
-#define SPI_R_MISO_Pin LL_GPIO_PIN_4
-#define SPI_R_MOSI_GPIO_Port GPIOB
-#define SPI_R_MOSI_Pin LL_GPIO_PIN_5
-#define SPI_R_SCK_GPIO_Port GPIOA
-#define SPI_R_SCK_Pin LL_GPIO_PIN_5
+#define SPI_R_MISO_GPIO_Port GPIOA //GPIOB
+#define SPI_R_MISO_Pin LL_GPIO_PIN_6 //LL_GPIO_PIN_4
+#define SPI_R_MOSI_GPIO_Port GPIOA //GPIOB
+#define SPI_R_MOSI_Pin LL_GPIO_PIN_7 //LL_GPIO_PIN_5
+#define SPI_R_SCK_GPIO_Port GPIOB //GPIOA
+#define SPI_R_SCK_Pin LL_GPIO_PIN_3 //LL_GPIO_PIN_5
 
 #define NFC_IRQ_Pin RFID_PULL_Pin
 #define NFC_IRQ_GPIO_Port RFID_PULL_GPIO_Port
