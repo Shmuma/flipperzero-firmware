@@ -44,7 +44,7 @@ static const uint8_t furi_hal_subghz_preset_2fsk_dev9_5khz_async_regs[][2] = {
         {CC1101_MDMCFG1, 0x02},
         {CC1101_MDMCFG2, 0x04}, // Format 2-FSK/FM, No preamble/sync, Disable (current optimized)
         {CC1101_MDMCFG3, 0x83}, // Data rate is 4.79794 kBaud
-        {CC1101_MDMCFG4, 0x67}, //Rx BW filter is 270.833333 kHz
+        {CC1101_MDMCFG4, 0x85}, //Rx BW filter is 270.833333 kHz
         {CC1101_DEVIATN, 0x24}, //Deviation 9.5 kHz
 
         /* Main Radio Control State Machine */
@@ -180,11 +180,12 @@ static int32_t subghz_tx_rx_worker_thread(void* context) {
 
     furi_hal_subghz_reset();
     furi_hal_subghz_idle();
-    //furi_hal_subghz_load_preset(FuriHalSubGhzPresetGFSK9_99KbAsync);
-    //furi_hal_subghz_load_custom_preset(furi_hal_subghz_preset_2fsk_dev9_5khz_async_regs);
+//    furi_hal_subghz_load_preset(FuriHalSubGhzPresetGFSK9_99KbAsync);
+//    furi_hal_subghz_load_custom_preset(furi_hal_subghz_preset_2fsk_dev9_5khz_async_regs);
     //furi_hal_subghz_load_registers((uint8_t*)furi_hal_subghz_preset_gfsk_9_99kb_async_regs);
     furi_hal_subghz_load_registers((uint8_t*)furi_hal_subghz_preset_2fsk_dev9_5khz_async_regs);
     furi_hal_subghz_load_patable(furi_hal_subghz_preset_gfsk_async_patable);
+    //furi_hal_subghz_load_preset(FuriHalSubGhzPresetOok270Async);
     //furi_hal_subghz_load_preset(FuriHalSubGhzPresetMSK99_97KbAsync);
     furi_hal_gpio_init(&gpio_cc1101_g0, GpioModeInput, GpioPullNo, GpioSpeedLow);
 
