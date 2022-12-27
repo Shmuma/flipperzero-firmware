@@ -38,6 +38,10 @@
 uint32_t subghz_debug_gpio_buff[2];
 #endif
 
+// Uncomment define to use external CC1101 board attached as described in documentation/ExtCC1101.md
+#define SUBGHZ_EXTERNAL_CC1101
+
+
 typedef struct {
     volatile SubGhzState state;
     volatile SubGhzRegulation regulation;
@@ -353,7 +357,11 @@ uint32_t furi_hal_subghz_set_frequency(uint32_t value) {
 
 void furi_hal_subghz_set_path(FuriHalSubGhzPath path) {
     furi_hal_spi_acquire(&furi_hal_spi_bus_handle_subghz);
-#if 0
+#ifdef SUBGHZ_EXTERNAL_CC1101
+    UNUSED(path);
+    furi_hal_gpio_write(&gpio_rf_sw_0, 0);
+    cc1101_write_reg(&furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW);
+#else
     if(path == FuriHalSubGhzPath433) {
         furi_hal_gpio_write(&gpio_rf_sw_0, 0);
         cc1101_write_reg(
@@ -366,11 +374,8 @@ void furi_hal_subghz_set_path(FuriHalSubGhzPath path) {
         cc1101_write_reg(
             &furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW | CC1101_IOCFG_INV);
     } else if(path == FuriHalSubGhzPathIsolate) {
-#endif
-        UNUSED(path);
         furi_hal_gpio_write(&gpio_rf_sw_0, 0);
         cc1101_write_reg(&furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW);
-#if 0
     } else {
         furi_crash("SubGhz: Incorrect path during set.");
     }
