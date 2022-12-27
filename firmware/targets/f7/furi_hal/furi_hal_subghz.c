@@ -350,17 +350,14 @@ uint32_t furi_hal_subghz_set_frequency(uint32_t value) {
     return real_frequency;
 }
 
+
 void furi_hal_subghz_set_path(FuriHalSubGhzPath path) {
     furi_hal_spi_acquire(&furi_hal_spi_bus_handle_subghz);
 #if 0
     if(path == FuriHalSubGhzPath433) {
-#else
-    UNUSED(path);
-#endif
         furi_hal_gpio_write(&gpio_rf_sw_0, 0);
         cc1101_write_reg(
-            &furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW | CC1101_IOCFG_INV);
-#if 0
+                &furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW | CC1101_IOCFG_INV);
     } else if(path == FuriHalSubGhzPath315) {
         furi_hal_gpio_write(&gpio_rf_sw_0, 1);
         cc1101_write_reg(&furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW);
@@ -369,8 +366,11 @@ void furi_hal_subghz_set_path(FuriHalSubGhzPath path) {
         cc1101_write_reg(
             &furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW | CC1101_IOCFG_INV);
     } else if(path == FuriHalSubGhzPathIsolate) {
+#endif
+        UNUSED(path);
         furi_hal_gpio_write(&gpio_rf_sw_0, 0);
         cc1101_write_reg(&furi_hal_spi_bus_handle_subghz, CC1101_IOCFG2, CC1101IocfgHW);
+#if 0
     } else {
         furi_crash("SubGhz: Incorrect path during set.");
     }
@@ -419,6 +419,7 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     furi_hal_subghz_capture_callback = callback;
     furi_hal_subghz_capture_callback_context = context;
 
+    // TODO: check new pin capabilities
     furi_hal_gpio_init_ex(
         &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1TIM2);
 
