@@ -10,6 +10,7 @@
 #include <furi_hal_resources.h>
 
 #include <stm32wbxx_ll_dma.h>
+#include <stm32wbxx_ll_lptim.h>
 
 #include <furi.h>
 #include <cc1101.h>
@@ -458,6 +459,16 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     // Start timer
     LL_TIM_SetCounter(TIM2, 0);
     LL_TIM_EnableCounter(TIM2);
+
+    // experimental low-power timer on C0 pin
+    furi_hal_gpio_init_ex(
+            &gpio_ext_pc0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1LPTIM1);
+
+    LL_LPTIM_InitTypeDef LPTIM_InitStruct = {0};
+    LPTIM_InitStruct.ClockSource = LL_LPTIM_CLK_SOURCE_INTERNAL;
+    LPTIM_InitStruct.Prescaler = LL_LPTIM_PRESCALER_DIV32;
+    LL_LPTIM_Init(LPTIM1, &LPTIM_InitStruct);
+    FURI_LOG_I(TAG, "LPTIM1 init");
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(
