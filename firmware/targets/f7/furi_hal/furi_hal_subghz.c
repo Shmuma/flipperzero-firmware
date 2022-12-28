@@ -424,7 +424,7 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     furi_hal_subghz_capture_callback = callback;
     furi_hal_subghz_capture_callback_context = context;
 
-    // TODO: check new pin capabilities
+#ifndef SUBGHZ_EXTERNAL_CC1101
     furi_hal_gpio_init_ex(
         &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1TIM2);
 
@@ -470,6 +470,39 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     // Start timer
     LL_TIM_SetCounter(TIM2, 0);
     LL_TIM_EnableCounter(TIM2);
+#else
+    furi_hal_gpio_init_ex(
+            &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1LPTIM1);
+
+    LL_LPTIM_InitTypeDef LPTIM_InitStruct = {0};
+    LPTIM_InitStruct.Prescaler = 64 - 1;
+    LPTIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+    LPTIM_InitStruct.Autoreload = 0x7FFFFFFE;
+    LPTIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV4;
+    LL_TIM_Init(LPTIM1, &TIM_InitStruct);
+//
+//    // Timer: advanced
+//    LL_TIM_SetClockSource(LPTIM1, LL_TIM_CLOCKSOURCE_INTERNAL);
+//    LL_TIM_DisableARRPreload(LPTIM1);
+//    LL_TIM_SetTriggerInput(LPTIM1, LL_TIM_TS_TI2FP2);
+//    LL_TIM_SetSlaveMode(LPTIM1, LL_TIM_SLAVEMODE_RESET);
+//    LL_TIM_SetTriggerOutput(LPTIM1, LL_TIM_TRGO_RESET);
+//    LL_TIM_EnableMasterSlaveMode(LPTIM1);
+//    LL_TIM_DisableDMAReq_TRIG(LPTIM1);
+//    LL_TIM_DisableIT_TRIG(LPTIM1);
+//
+//    // Timer: channel 1 indirect
+//    LL_TIM_IC_SetActiveInput(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_INDIRECTTI);
+//    LL_TIM_IC_SetPrescaler(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
+//    LL_TIM_IC_SetPolarity(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_IC_POLARITY_FALLING);
+//    LL_TIM_IC_SetFilter(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_IC_FILTER_FDIV1);
+//
+//    // Timer: channel 2 direct
+//    LL_TIM_IC_SetActiveInput(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_ACTIVEINPUT_DIRECTTI);
+//    LL_TIM_IC_SetPrescaler(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_ICPSC_DIV1);
+//    LL_TIM_IC_SetPolarity(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_IC_POLARITY_RISING);
+//    LL_TIM_IC_SetFilter(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_IC_FILTER_FDIV32_N8);
+#endif
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(
