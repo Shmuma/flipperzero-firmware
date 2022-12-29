@@ -460,15 +460,35 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     LL_TIM_SetCounter(TIM2, 0);
     LL_TIM_EnableCounter(TIM2);
 
-    // experimental low-power timer on C0 pin
+    // experimental low-power timer on 13 pin
     furi_hal_gpio_init_ex(
-            &gpio_ext_pc0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1LPTIM1);
+            &gpio_usart_tx, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn14TIM16);
 
-    LL_LPTIM_InitTypeDef LPTIM_InitStruct = {0};
-    LPTIM_InitStruct.ClockSource = LL_LPTIM_CLK_SOURCE_INTERNAL;
-    LPTIM_InitStruct.Prescaler = LL_LPTIM_PRESCALER_DIV32;
-    LL_LPTIM_Init(LPTIM1, &LPTIM_InitStruct);
-    FURI_LOG_I(TAG, "LPTIM1 init");
+    LL_TIM_InitTypeDef TIM_InitStruct16 = {0};
+    TIM_InitStruct16.Prescaler = 64 - 1;
+    TIM_InitStruct16.CounterMode = LL_TIM_COUNTERMODE_UP;
+    TIM_InitStruct16.Autoreload = 0x7FFFFFFE;
+    TIM_InitStruct16.ClockDivision = LL_TIM_CLOCKDIVISION_DIV4;
+    LL_TIM_Init(TIM16, &TIM_InitStruct16);
+
+    LL_TIM_SetClockSource(TIM16, LL_TIM_CLOCKSOURCE_INTERNAL);
+    LL_TIM_DisableARRPreload(TIM16);
+    LL_TIM_SetTriggerInput(TIM16, LL_TIM_TS_TI2FP2);
+    LL_TIM_SetSlaveMode(TIM16, LL_TIM_SLAVEMODE_RESET);
+    LL_TIM_SetTriggerOutput(TIM16, LL_TIM_TRGO_RESET);
+    LL_TIM_EnableMasterSlaveMode(TIM16);
+    LL_TIM_DisableDMAReq_TRIG(TIM16);
+    LL_TIM_DisableIT_TRIG(TIM16);
+
+    FURI_LOG_I(TAG, "TIM16 init");
+
+    // Start timer
+    LL_TIM_SetCounter(TIM16, 0);
+    LL_TIM_EnableCounter(TIM16);
+
+    FURI_LOG_I(TAG, "Started");
+    uint32_t cnt = LL_TIM_GetCounter(TIM16);
+    FURI_LOG_I(TAG, "%ld", cnt);
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(
