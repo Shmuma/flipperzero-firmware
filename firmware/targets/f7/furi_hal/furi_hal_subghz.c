@@ -388,6 +388,7 @@ volatile FuriHalSubGhzCaptureCallback furi_hal_subghz_capture_callback = NULL;
 volatile void* furi_hal_subghz_capture_callback_context = NULL;
 
 static void furi_hal_subghz_capture_ISR() {
+#ifndef SUBGHZ_EXTERNAL_CC1101
     // Channel 1
     if(LL_TIM_IsActiveFlag_CC1(TIM2)) {
         LL_TIM_ClearFlag_CC1(TIM2);
@@ -415,6 +416,38 @@ static void furi_hal_subghz_capture_ISR() {
                 (void*)furi_hal_subghz_capture_callback_context);
         }
     }
+#else
+    FURI_LOG_I(TAG, "i");
+    // Channel 1
+    if(LL_TIM_IsActiveFlag_CC1(TIM16)) {
+        FURI_LOG_I(TAG, "1");
+        LL_TIM_ClearFlag_CC1(TIM16);
+        furi_hal_subghz_capture_delta_duration = LL_TIM_IC_GetCaptureCH1(TIM16);
+        if(furi_hal_subghz_capture_callback) {
+#ifdef SUBGHZ_DEBUG_CC1101_PIN
+            furi_hal_gpio_write(&SUBGHZ_DEBUG_CC1101_PIN, false);
+#endif
+            furi_hal_subghz_capture_callback(
+                    true,
+                    furi_hal_subghz_capture_delta_duration,
+                    (void*)furi_hal_subghz_capture_callback_context);
+        }
+    }
+    // Channel 2
+    if(LL_TIM_IsActiveFlag_CC2(TIM16)) {
+        FURI_LOG_I(TAG, "2");
+        LL_TIM_ClearFlag_CC2(TIM16);
+        if(furi_hal_subghz_capture_callback) {
+#ifdef SUBGHZ_DEBUG_CC1101_PIN
+            furi_hal_gpio_write(&SUBGHZ_DEBUG_CC1101_PIN, true);
+#endif
+            furi_hal_subghz_capture_callback(
+                    false,
+                    LL_TIM_IC_GetCaptureCH2(TIM16) - furi_hal_subghz_capture_delta_duration,
+                    (void*)furi_hal_subghz_capture_callback_context);
+        }
+    }
+#endif
 }
 
 void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void* context) {
@@ -472,36 +505,50 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     LL_TIM_EnableCounter(TIM2);
 #else
     furi_hal_gpio_init_ex(
-            &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1LPTIM1);
+            &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn14TIM16);
 
-    LL_LPTIM_InitTypeDef LPTIM_InitStruct = {0};
-    LPTIM_InitStruct.Prescaler = 64 - 1;
-    LPTIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-    LPTIM_InitStruct.Autoreload = 0x7FFFFFFE;
-    LPTIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV4;
-    LL_TIM_Init(LPTIM1, &TIM_InitStruct);
-//
-//    // Timer: advanced
-//    LL_TIM_SetClockSource(LPTIM1, LL_TIM_CLOCKSOURCE_INTERNAL);
-//    LL_TIM_DisableARRPreload(LPTIM1);
-//    LL_TIM_SetTriggerInput(LPTIM1, LL_TIM_TS_TI2FP2);
-//    LL_TIM_SetSlaveMode(LPTIM1, LL_TIM_SLAVEMODE_RESET);
-//    LL_TIM_SetTriggerOutput(LPTIM1, LL_TIM_TRGO_RESET);
-//    LL_TIM_EnableMasterSlaveMode(LPTIM1);
-//    LL_TIM_DisableDMAReq_TRIG(LPTIM1);
-//    LL_TIM_DisableIT_TRIG(LPTIM1);
-//
-//    // Timer: channel 1 indirect
-//    LL_TIM_IC_SetActiveInput(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_INDIRECTTI);
-//    LL_TIM_IC_SetPrescaler(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
-//    LL_TIM_IC_SetPolarity(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_IC_POLARITY_FALLING);
-//    LL_TIM_IC_SetFilter(LPTIM1, LL_TIM_CHANNEL_CH1, LL_TIM_IC_FILTER_FDIV1);
-//
-//    // Timer: channel 2 direct
-//    LL_TIM_IC_SetActiveInput(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_ACTIVEINPUT_DIRECTTI);
-//    LL_TIM_IC_SetPrescaler(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_ICPSC_DIV1);
-//    LL_TIM_IC_SetPolarity(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_IC_POLARITY_RISING);
-//    LL_TIM_IC_SetFilter(LPTIM1, LL_TIM_CHANNEL_CH2, LL_TIM_IC_FILTER_FDIV32_N8);
+    // Timer: base
+    LL_TIM_InitTypeDef TIM_InitStruct = {0};
+    TIM_InitStruct.Prescaler = 64 - 1;
+    TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+    TIM_InitStruct.Autoreload = 0x7FFFFFFE;
+    TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV4;
+    LL_TIM_Init(TIM16, &TIM_InitStruct);
+
+    // Timer: advanced
+    LL_TIM_SetClockSource(TIM16, LL_TIM_CLOCKSOURCE_INTERNAL);
+    LL_TIM_DisableARRPreload(TIM16);
+    LL_TIM_SetTriggerInput(TIM16, LL_TIM_TS_TI2FP2);
+    LL_TIM_SetSlaveMode(TIM16, LL_TIM_SLAVEMODE_RESET);
+    LL_TIM_SetTriggerOutput(TIM16, LL_TIM_TRGO_RESET);
+    LL_TIM_EnableMasterSlaveMode(TIM16);
+    LL_TIM_DisableDMAReq_TRIG(TIM16);
+    LL_TIM_DisableIT_TRIG(TIM16);
+
+    // Timer: channel 1 indirect
+    LL_TIM_IC_SetActiveInput(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_INDIRECTTI);
+    LL_TIM_IC_SetPrescaler(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
+    LL_TIM_IC_SetPolarity(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_IC_POLARITY_FALLING);
+    LL_TIM_IC_SetFilter(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_IC_FILTER_FDIV1);
+
+    // Timer: channel 2 direct
+    LL_TIM_IC_SetActiveInput(TIM16, LL_TIM_CHANNEL_CH1N, LL_TIM_ACTIVEINPUT_DIRECTTI);
+    LL_TIM_IC_SetPrescaler(TIM16, LL_TIM_CHANNEL_CH1N, LL_TIM_ICPSC_DIV1);
+    LL_TIM_IC_SetPolarity(TIM16, LL_TIM_CHANNEL_CH1N, LL_TIM_IC_POLARITY_RISING);
+    LL_TIM_IC_SetFilter(TIM16, LL_TIM_CHANNEL_CH1N, LL_TIM_IC_FILTER_FDIV32_N8);
+
+    // ISR setup
+    furi_hal_interrupt_set_isr(FuriHalInterruptIdTim1UpTim16, furi_hal_subghz_capture_ISR, NULL);
+
+    // Interrupts and channels
+    LL_TIM_EnableIT_CC1(TIM16);
+    LL_TIM_EnableIT_CC2(TIM16);
+    LL_TIM_CC_EnableChannel(TIM16, LL_TIM_CHANNEL_CH1);
+    LL_TIM_CC_EnableChannel(TIM16, LL_TIM_CHANNEL_CH1N);
+
+    // Start timer
+    LL_TIM_SetCounter(TIM16, 0);
+    LL_TIM_EnableCounter(TIM16);
 #endif
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
@@ -521,14 +568,22 @@ void furi_hal_subghz_stop_async_rx() {
     furi_hal_subghz_idle();
 
     FURI_CRITICAL_ENTER();
+#ifndef SUBGHZ_EXTERNAL_CC1101
     LL_TIM_DeInit(TIM2);
+#else
+    LL_TIM_DeInit(TIM16);
+#endif
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(&SUBGHZ_DEBUG_CC1101_PIN, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 #endif
 
     FURI_CRITICAL_EXIT();
+#ifndef SUBGHZ_EXTERNAL_CC1101
     furi_hal_interrupt_set_isr(FuriHalInterruptIdTIM2, NULL, NULL);
+#else
+    furi_hal_interrupt_set_isr(FuriHalInterruptIdTim1UpTim16, NULL, NULL);
+#endif
 
     furi_hal_gpio_init(&gpio_cc1101_g0, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 }
