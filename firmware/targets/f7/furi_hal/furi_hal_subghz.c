@@ -473,12 +473,19 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
 
     LL_TIM_SetClockSource(TIM16, LL_TIM_CLOCKSOURCE_INTERNAL);
     LL_TIM_DisableARRPreload(TIM16);
+    // ????
     LL_TIM_SetTriggerInput(TIM16, LL_TIM_TS_TI2FP2);
     LL_TIM_SetSlaveMode(TIM16, LL_TIM_SLAVEMODE_RESET);
     LL_TIM_SetTriggerOutput(TIM16, LL_TIM_TRGO_RESET);
     LL_TIM_EnableMasterSlaveMode(TIM16);
     LL_TIM_DisableDMAReq_TRIG(TIM16);
     LL_TIM_DisableIT_TRIG(TIM16);
+
+    // Timer: channel 1 indirect
+    LL_TIM_IC_SetActiveInput(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_INDIRECTTI);
+    LL_TIM_IC_SetPrescaler(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
+    LL_TIM_IC_SetPolarity(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_IC_POLARITY_FALLING);
+    LL_TIM_IC_SetFilter(TIM16, LL_TIM_CHANNEL_CH1, LL_TIM_IC_FILTER_FDIV1);
 
     FURI_LOG_I(TAG, "TIM16 init");
 
