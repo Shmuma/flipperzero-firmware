@@ -387,7 +387,6 @@ volatile uint32_t furi_hal_subghz_capture_delta_duration = 0;
 volatile FuriHalSubGhzCaptureCallback furi_hal_subghz_capture_callback = NULL;
 volatile void* furi_hal_subghz_capture_callback_context = NULL;
 
-#ifndef SUBGHZ_EXTERNAL_CC1101
 static void furi_hal_subghz_capture_ISR() {
     // Channel 1
     if(LL_TIM_IsActiveFlag_CC1(TIM2)) {
@@ -417,21 +416,6 @@ static void furi_hal_subghz_capture_ISR() {
         }
     }
 }
-#else
-static void furi_hal_subghz_capture_ext_isr(void* _ctx) {
-    UNUSED(_ctx);
-    if(furi_hal_subghz_capture_callback) {
-        furi_hal_subghz_capture_callback(
-                true,
-                10,
-                (void*)furi_hal_subghz_capture_callback_context);
-        furi_hal_subghz_capture_callback(
-                false,
-                10,
-                (void*)furi_hal_subghz_capture_callback_context);
-    }
-}
-#endif
 
 void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void* context) {
     furi_assert(furi_hal_subghz.state == SubGhzStateIdle);
@@ -440,10 +424,8 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     furi_hal_subghz_capture_callback = callback;
     furi_hal_subghz_capture_callback_context = context;
 
-#ifndef SUBGHZ_EXTERNAL_CC1101
     furi_hal_gpio_init_ex(
         &gpio_cc1101_g0, GpioModeAltFunctionPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn1TIM2);
-#endif
 
     // Timer: base
     LL_TIM_InitTypeDef TIM_InitStruct = {0};
@@ -463,7 +445,6 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     LL_TIM_DisableDMAReq_TRIG(TIM2);
     LL_TIM_DisableIT_TRIG(TIM2);
 
-#ifndef SUBGHZ_EXTERNAL_CC1101
     // Timer: channel 1 indirect
     LL_TIM_IC_SetActiveInput(TIM2, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_INDIRECTTI);
     LL_TIM_IC_SetPrescaler(TIM2, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
@@ -484,17 +465,10 @@ void furi_hal_subghz_start_async_rx(FuriHalSubGhzCaptureCallback callback, void*
     LL_TIM_EnableIT_CC2(TIM2);
     LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH1);
     LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH2);
-#endif
 
     // Start timer
     LL_TIM_SetCounter(TIM2, 0);
     LL_TIM_EnableCounter(TIM2);
-
-#ifdef SUBGHZ_EXTERNAL_CC1101
-    furi_hal_gpio_init(&gpio_cc1101_g0, GpioModeInterruptRise, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_add_int_callback(&gpio_cc1101_g0, furi_hal_subghz_capture_ext_isr, NULL);
-    furi_hal_gpio_enable_int_callback(&gpio_cc1101_g0);
-#endif
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(
@@ -513,21 +487,14 @@ void furi_hal_subghz_stop_async_rx() {
     furi_hal_subghz_idle();
 
     FURI_CRITICAL_ENTER();
-#ifndef SUBGHZ_EXTERNAL_CC1101
     LL_TIM_DeInit(TIM2);
-#else
-    furi_hal_gpio_disable_int_callback(&gpio_cc1101_g0);
-    furi_hal_gpio_remove_int_callback(&gpio_cc1101_g0);
-#endif
 
 #ifdef SUBGHZ_DEBUG_CC1101_PIN
     furi_hal_gpio_init(&SUBGHZ_DEBUG_CC1101_PIN, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 #endif
 
     FURI_CRITICAL_EXIT();
-#ifndef SUBGHZ_EXTERNAL_CC1101
     furi_hal_interrupt_set_isr(FuriHalInterruptIdTIM2, NULL, NULL);
-#endif
 
     furi_hal_gpio_init(&gpio_cc1101_g0, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 }

@@ -6,7 +6,7 @@ Connection (module -> flipper GPIO):
 
 1. GND -> 18
 2. VCC -> 9
-3. GDO0 -> 13
+3. GDO0 -> (to G0 pin of internal CC1101)
 4. CSN -> 6
 5. SCK -> 5
 6. MOSI -> 2
