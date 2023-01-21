@@ -114,7 +114,7 @@ extern const GpioPin gpio_usb_dp;
 #define CC1101_CS_GPIO_Port GPIOB //GPIOD
 #define CC1101_CS_Pin LL_GPIO_PIN_2 //LL_GPIO_PIN_0
 #define CC1101_G0_GPIO_Port GPIOA
-#define CC1101_G0_Pin LL_GPIO_PIN_1
+#define CC1101_G0_Pin LL_GPIO_PIN_4 //LL_GPIO_PIN_1
 
 #define DISPLAY_CS_GPIO_Port GPIOC
 #define DISPLAY_CS_Pin LL_GPIO_PIN_11
